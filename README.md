@@ -30,12 +30,18 @@ home.packages = [ inputs.direnv-ide-shim.packages.${pkgs.system}.default ];
 nix profile install "github:umanit/direnv-ide-shim"
 ```
 
-Dans les deux cas, `ide-php` / `ide-composer` sont disponibles dans le profil utilisateur (ex. `~/.nix-profile/bin/ide-php`).
+Dans les deux cas, `ide-php` / `ide-composer` sont disponibles dans le profil utilisateur — mais le chemin exact dépend de comment home-manager est câblé :
+
+- **home-manager standalone** (`home-manager switch`) : `~/.nix-profile/bin/ide-php`.
+- **home-manager en module NixOS** (`useGlobalPkgs = true` / `useUserPackages = true`, ex. via `nh os switch`) : `/etc/profiles/per-user/<utilisateur>/bin/ide-php` — c'est ce dernier cas qui s'applique si `~/.nix-profile/` n'existe pas.
+- `nix profile install` (Nix seul, sans NixOS/home-manager) : `~/.nix-profile/bin/ide-php`.
+
+En cas de doute, `command -v ide-php` (une fois le binaire dans le `PATH` du shell) donne le chemin exact à coller dans PhpStorm.
 
 ## Configuration PhpStorm (par projet, une seule fois)
 
-- `Settings › PHP › CLI Interpreters` → chemin vers `~/.nix-profile/bin/ide-php`.
-- `Settings › PHP › Composer › Executable` → `~/.nix-profile/bin/ide-composer` (si ce réglage référence lui aussi un chemin `/nix/store/...` brut).
+- `Settings › PHP › CLI Interpreters` → chemin vers `ide-php` (voir ci-dessus pour le localiser).
+- `Settings › PHP › Composer › Executable` → `ide-composer` (si ce réglage référence lui aussi un chemin `/nix/store/...` brut).
 
 ## Ajouter un outil
 

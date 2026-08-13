@@ -14,7 +14,7 @@ Ce flake fournit un point d'indirection stable : des binaires nommés exactement
 
 Chaque shim exécute `direnv exec "$PWD" <outil> "$@"`. `direnv` remonte lui-même l'arborescence des dossiers pour trouver le `.envrc` du projet courant — le shim n'a donc besoin de rien savoir de la configuration du projet dans lequel il est appelé. Le `devShell` du projet expose sa propre entrée `bin/` en tête de PATH, donc la résolution retombe sur le vrai binaire du projet, pas sur le shim lui-même.
 
-**Garde-fou anti-boucle** : en dehors de tout projet direnv (pas de `.envrc` trouvé), `direnv exec` ne fait qu'exécuter la commande avec l'environnement courant inchangé — donc une seconde résolution du même nom d'outil retomberait sur ce shim lui-même, à l'infini. Chaque shim pose donc une variable d'environnement au premier passage ; si elle est déjà présente (donc si aucun `.envrc` n'a modifié le `PATH` pour fournir un vrai binaire), il échoue proprement avec un message clair plutôt que de boucler.
+**Garde-fou anti-boucle + repli vers un binaire système** : en dehors de tout projet direnv (pas de `.envrc` trouvé), `direnv exec` ne fait qu'exécuter la commande avec l'environnement courant inchangé — donc une seconde résolution du même nom d'outil retomberait sur ce shim lui-même, à l'infini. Chaque shim pose donc une variable d'environnement au premier passage ; au second passage (variable déjà présente), au lieu d'abandonner directement, il recherche lui-même un *autre* exécutable du même nom sur le `PATH` (en s'excluant explicitement) et l'exécute s'il en trouve un — par exemple un vrai PHP système installé via `apt` sur une machine non-NixOS. S'il n'en trouve aucun (cas typique d'une machine NixOS sans PHP global), il échoue proprement avec un message clair. Le même binaire se comporte donc correctement sur toutes les machines, sans avoir besoin de distinguer NixOS d'autre chose : seul ce qui existe réellement sur le `PATH` de la machine change le résultat.
 
 Prérequis, par projet cible : `direnv allow` doit avoir été exécuté au moins une fois (comportement standard `direnv`, indépendant de ce shim).
 
@@ -41,8 +41,6 @@ Dans les deux cas, `php` / `composer` sont disponibles dans le profil utilisateu
 - `nix profile install` (Nix seul, sans NixOS/home-manager) : `~/.nix-profile/bin/php`.
 
 En cas de doute, `command -v php` (une fois le binaire dans le `PATH` du shell) donne le chemin exact à coller dans PhpStorm.
-
-⚠️ Ce paquet place un `php`/`composer` en tête de `PATH` sur toute la machine. Sur une machine qui possède *aussi* un vrai PHP système global (ex. installé via `apt`), en dehors de tout projet Nix/direnv ce shim primera et échouera avec le message d'erreur du garde-fou plutôt que de retomber sur ce PHP système — à garder en tête si ce cas d'usage existe chez vous.
 
 ## Configuration PhpStorm (par projet, une seule fois)
 

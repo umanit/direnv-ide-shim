@@ -11,9 +11,22 @@
       packages = nixpkgs.lib.genAttrs systems (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          mkShim = tool: pkgs.writeShellScriptBin "ide-${tool}" ''
+          # Named after the real tool (not "ide-<tool>"): PhpStorm's Quality
+          # Tools (PHPStan, PHP_CodeSniffer…) don't invoke the configured CLI
+          # interpreter — they run the vendor/bin/* script directly, relying
+          # on its `#!/usr/bin/env php` shebang, which needs a literal `php`
+          # on PATH. The guard prevents an infinite loop when called outside
+          # any direnv project: with no .envrc, `direnv exec` is a passthrough
+          # that leaves PATH untouched, so a second, unguarded lookup of the
+          # tool name would just find this same script again.
+          mkShim = tool: pkgs.writeShellScriptBin tool ''
             set -euo pipefail
-            exec ${pkgs.direnv}/bin/direnv exec "$PWD" ${tool} "$@"
+            if [ -z "''${DIRENV_IDE_SHIM_GUARD:-}" ]; then
+              export DIRENV_IDE_SHIM_GUARD=1
+              exec ${pkgs.direnv}/bin/direnv exec "$PWD" ${tool} "$@"
+            fi
+            echo "${tool}: aucun binaire ${tool} disponible pour $PWD (pas de devShell direnv actif ici, ni ailleurs sur le PATH)" >&2
+            exit 127
           '';
         in {
           default = pkgs.symlinkJoin {

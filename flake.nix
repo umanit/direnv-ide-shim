@@ -1,58 +1,53 @@
 {
-  description = "Binaires shim (php, composer, …) qui délèguent à `direnv exec` dans le projet courant — chemin stable pour les IDE (PhpStorm) qui n'aiment pas les chemins /nix/store qui changent à chaque rebuild.";
+  description = "PhpStorm/Nix glue: shim binaries (php, composer, …) that delegate to `direnv exec` in the current project, plus a handler for phpstorm:// links.";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-  outputs = { self, nixpkgs }:
+  outputs =
+    { self, nixpkgs }:
     let
-      systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
-      tools = [ "php" "composer" ];
-    in {
-      packages = nixpkgs.lib.genAttrs systems (system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-          # Named after the real tool (not "ide-<tool>"): PhpStorm's Quality
-          # Tools (PHPStan, PHP_CodeSniffer…) don't invoke the configured CLI
-          # interpreter — they run the vendor/bin/* script directly, relying
-          # on its `#!/usr/bin/env php` shebang, which needs a literal `php`
-          # on PATH.
-          #
-          # Outside any direnv project (no .envrc found), `direnv exec` is a
-          # passthrough that leaves PATH untouched, so a second, unguarded
-          # lookup of the tool name would just find this same script again —
-          # the guard breaks that loop. Once guarded, fall back to any *other*
-          # same-named executable already on PATH (e.g. a real system-wide
-          # install on a non-NixOS machine) before giving up: this one script
-          # behaves correctly whether or not the machine has such a fallback,
-          # with no need to special-case NixOS vs. other distros at build time
-          # — `nix profile install` produces the exact same derivation either
-          # way, only what's actually on PATH at runtime differs.
-          mkShim = tool: pkgs.writeShellScriptBin tool ''
-            set -euo pipefail
+      # x86_64-darwin is gone: nixpkgs unstable refuses to evaluate for it
+      # since 26.11.
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "aarch64-darwin"
+      ];
 
-            if [ -z "''${DIRENV_IDE_SHIM_GUARD:-}" ]; then
-              export DIRENV_IDE_SHIM_GUARD=1
-              exec ${pkgs.direnv}/bin/direnv exec "$PWD" ${tool} "$@"
-            fi
+      # PhpStorm is unfree, so `legacyPackages` would make every output of this
+      # flake unevaluable without NIXPKGS_ALLOW_UNFREE - including `nix flake
+      # check` and `nix profile install`. A flake whose whole reason to exist is
+      # PhpStorm can reasonably allow that one package, and nothing else.
+      pkgsFor =
+        system:
+        import nixpkgs {
+          inherit system;
+          config.allowUnfreePredicate = pkg: nixpkgs.lib.getName pkg == "phpstorm";
+        };
 
-            self_real="$(readlink -f "$0")"
-            IFS=':' read -ra dirs <<< "$PATH"
-            for dir in "''${dirs[@]}"; do
-              candidate="$dir/${tool}"
-              if [ -x "$candidate" ] && [ "$(readlink -f "$candidate")" != "$self_real" ]; then
-                exec "$candidate" "$@"
-              fi
-            done
+      forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f (pkgsFor system));
+    in
+    {
+      packages = forAllSystems (
+        pkgs:
+        {
+          default = pkgs.callPackage ./pkgs/direnv-ide-shim.nix { };
 
-            echo "${tool}: aucun binaire ${tool} disponible pour $PWD (pas de devShell direnv actif ici, ni ailleurs sur le PATH)" >&2
-            exit 127
-          '';
-        in {
-          default = pkgs.symlinkJoin {
-            name = "direnv-ide-shim";
-            paths = map mkShim tools;
-          };
+          direnv-ide-shim = pkgs.callPackage ./pkgs/direnv-ide-shim.nix { };
+        }
+        # Drives a desktop IDE through xdg scheme handlers, and PhpStorm itself
+        # is Linux/Darwin-but-not-really here: keep it off platforms where it
+        # cannot work rather than exposing an output that always fails.
+        // nixpkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          phpstorm-url-handler = pkgs.callPackage ./pkgs/phpstorm-url-handler.nix { };
         }
       );
+
+      homeModules = {
+        default = self.homeModules.phpstorm-url-handler;
+        phpstorm-url-handler = ./modules/home-manager/phpstorm-url-handler.nix;
+      };
+
+      formatter = forAllSystems (pkgs: pkgs.nixfmt-tree);
     };
 }

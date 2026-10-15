@@ -69,15 +69,21 @@ Add its name to the `tools` list in `pkgs/direnv-ide-shim.nix` (e.g. `"symfony"`
 # Development
 
 ```bash
-nix flake check -L   # evaluates every output, then builds and runs the checks
-nix fmt              # nixfmt through treefmt
+nix flake check -L         # URL parsing, shim guard and PATH fallback
+nix flake check ./tests -L # what the home-manager module produces
+nix fmt                    # nixfmt through treefmt
 ```
 
-The checks live in `checks/`: URL parsing for the handler, the loop guard and
-PATH fallback for the shims, and what the home-manager module actually
-produces. They swap PhpStorm for a stub that prints its arguments, so running
-them never pulls the real (unfree, ~1.5 GB) IDE. CI runs the same two commands
-on every push and pull request.
+The checks swap PhpStorm for a stub that prints its arguments, so running them
+never pulls the real (unfree, ~1.5 GB) IDE. CI runs all three commands on every
+push and pull request.
+
+There are two flakes because a lock file is transitive: any input declared in
+the root flake lands in the lock of everything that consumes it. The check for
+the home-manager module needs home-manager, which no consumer of this flake
+should have to carry, so that one check lives in `./tests` with its own lock.
+`tests` tracks the working tree directly — no commit, no relock between an edit
+and a run.
 
 ---
 

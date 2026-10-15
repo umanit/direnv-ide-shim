@@ -11,7 +11,8 @@ flake.nix                                     assembly point only — no logic h
 pkgs/direnv-ide-shim.nix                      the shims
 pkgs/phpstorm-url-handler.nix                 the phpstorm:// handler
 modules/home-manager/phpstorm-url-handler.nix programs.phpstorm-url-handler
-checks/                                       one file per check in `nix flake check`
+checks/                                       checks needing nixpkgs only
+tests/                                        a second flake: checks needing home-manager
 ```
 
 Logic belongs in `pkgs/` or `modules/`, never in `flake.nix`.
@@ -19,8 +20,9 @@ Logic belongs in `pkgs/` or `modules/`, never in `flake.nix`.
 ## Commands
 
 ```bash
-nix flake check -L     # evaluates every output, builds and runs every check
-nix fmt                # nixfmt via treefmt; run before committing
+nix flake check -L          # every output, plus the checks/ checks
+nix flake check ./tests -L  # the home-manager check; easy to forget, CI runs it
+nix fmt                     # nixfmt via treefmt; run before committing
 nix build .#direnv-ide-shim
 nix build .#checks.x86_64-linux.handler-parsing -L   # one check, with output
 ```
@@ -67,15 +69,32 @@ fail needs an explicit `|| true` — that is why the `wmctrl` part has one.
   a body explaining the reasoning whenever the change is not obvious.
 - Nix formatting is `nixfmt` through `nix fmt`. CI fails on unformatted files.
 
+## Two flakes, and which one a check belongs to
+
+A lock file is transitive: every input declared in the root flake lands in the
+lock of every configuration that consumes this one, whether or not it is ever
+evaluated there. Flakes have no notion of a dev-only dependency, and `follows`
+only deduplicates — it does not undeclare. So the root flake declares nixpkgs
+and nothing else.
+
+`./tests` is a separate flake for the checks that need more than nixpkgs. It
+takes the root flake as `root.url = "path:.."`, an input with no narHash, so it
+reads the working tree on every run: edit a file and re-run, with no commit and
+no relock. It reaches the module through `root.homeModules.*` rather than a
+relative path, because a flake cannot read files outside its own directory —
+which also means those checks exercise the public interface.
+
+A new check needing only nixpkgs goes in `checks/`. One needing another input
+goes in `tests/`, or the root lock grows for everyone.
+
 ## Adding a check
 
-Drop a file in `checks/`, add it to `checks` in `flake.nix`. A check is a
-derivation that builds iff the checks pass, so it ends with `touch $out`.
+Drop a file in `checks/` (or `tests/`), add it to `checks` in the matching
+`flake.nix`. A check is a derivation that builds iff the checks pass, so it
+ends with `touch $out`.
 Count failures rather than exiting on the first one — seeing every failure in
 a single run beats discovering them one rebuild at a time.
 
 Use a stub for anything heavy or unfree: the handler takes its `phpstorm` as
 an argument precisely so a check can pass a `writeShellScriptBin` that prints
-its arguments. A check that needs the home-manager module evaluated goes
-through `home-manager.lib.homeManagerConfiguration` — that input exists only
-for the checks.
+its arguments.

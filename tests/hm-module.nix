@@ -8,6 +8,10 @@
   runCommand,
   writeShellScriptBin,
   home-manager,
+  # The module as the root flake exports it: a sub-flake cannot reach a file
+  # outside its own directory, and going through homeModules tests what users
+  # actually import.
+  module,
 }:
 
 let
@@ -23,7 +27,7 @@ let
   hmConfig = home-manager.lib.homeManagerConfiguration {
     inherit pkgs;
     modules = [
-      ../modules/home-manager/phpstorm-url-handler.nix
+      module
       {
         home.username = "test";
         home.homeDirectory = "/home/test";

@@ -54,23 +54,27 @@ in
   config = lib.mkIf cfg.enable {
     home.packages = [ cfg.package ];
 
-    # Written by hand instead of via `xdg.desktopEntries`: that module is
-    # broken on some home-manager releases (it always sets the removed
-    # `extraConfig` option internally - https://github.com/nix-community/home-manager,
-    # modules/misc/xdg-desktop-entries.nix - and errors on any entry).
-    xdg.dataFile."applications/${desktopEntry}".text = ''
-      [Desktop Entry]
-      Version=1.0
-      Type=Application
-      Name=PhpStorm URL Handler
-      Comment=Open phpstorm:// links in PhpStorm
-      Icon=phpstorm
-      NoDisplay=true
-      Categories=TextEditor;Utility;
-      Exec=${lib.getExe cfg.package} %u
-      Terminal=false
-      MimeType=${lib.concatMapStrings (scheme: "x-scheme-handler/${scheme};") cfg.schemes}
-    '';
+    # `xdg.desktopEntries` installs the entry as a package into the profile
+    # rather than writing it under xdg.dataHome. That is what makes the
+    # mimeinfo.cache refresh unnecessary here: `xdg.mime` (on by default on
+    # Linux) runs update-desktop-database over the profile's share/applications
+    # from home.extraProfileCommands. Without that cache, GNOME's app-chooser -
+    # which the browser's URL-open portal call goes through, and which reads
+    # mimeinfo.cache rather than mimeapps.list - reports a freshly declared
+    # scheme as "no app available".
+    xdg.desktopEntries.phpstorm-url-handler = {
+      name = "PhpStorm URL Handler";
+      comment = "Open phpstorm:// links in PhpStorm";
+      icon = "phpstorm";
+      exec = "${lib.getExe cfg.package} %u";
+      terminal = false;
+      noDisplay = true;
+      categories = [
+        "Utility"
+        "TextEditor"
+      ];
+      mimeType = map (scheme: "x-scheme-handler/${scheme}") cfg.schemes;
+    };
 
     xdg.mimeApps = {
       enable = true;
@@ -78,15 +82,5 @@ in
         _: desktopEntry
       );
     };
-
-    # mimeapps.list/xdg-mime are correct as soon as they are written, but
-    # GNOME's own app-chooser (what the browser's URL-open portal call goes
-    # through) reads applications/mimeinfo.cache instead, which is only ever
-    # rebuilt by this command - without it, a new scheme handler silently
-    # shows as "no app available" until something else happens to trigger the
-    # rebuild.
-    home.activation.phpstormUrlHandlerDesktopDatabase = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      run ${pkgs.desktop-file-utils}/bin/update-desktop-database $VERBOSE_ARG "${config.xdg.dataHome}/applications"
-    '';
   };
 }

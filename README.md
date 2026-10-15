@@ -109,7 +109,9 @@ imports = [ inputs.direnv-ide-shim.homeModules.phpstorm-url-handler ];
 programs.phpstorm-url-handler.enable = true;
 ```
 
-The module installs the binary, writes the `.desktop` entry, declares the MIME association and refreshes `mimeinfo.cache` on activation — without which GNOME's application chooser (which the browser's call goes through, via the xdg portal) keeps reporting "no application available" for the freshly declared scheme.
+The module installs the binary, declares the `.desktop` entry through `xdg.desktopEntries` and registers the MIME association.
+
+Nothing has to refresh `mimeinfo.cache` by hand: `xdg.desktopEntries` ships the entry as a package in the profile, and `xdg.mime` (on by default on Linux) runs `update-desktop-database` over that profile's `share/applications`. That cache matters because GNOME's application chooser — which the browser's call goes through, via the xdg portal — reads it rather than `mimeapps.list`, and reports "no application available" for a scheme missing from it. The one thing to avoid, then, is setting `xdg.mime.enable = false`.
 
 ### Options
 

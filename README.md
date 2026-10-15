@@ -66,6 +66,21 @@ Add its name to the `tools` list in `pkgs/direnv-ide-shim.nix` (e.g. `"symfony"`
 
 ---
 
+# Development
+
+```bash
+nix flake check -L   # evaluates every output, then builds and runs the checks
+nix fmt              # nixfmt through treefmt
+```
+
+The checks live in `checks/`: URL parsing for the handler, the loop guard and
+PATH fallback for the shims, and what the home-manager module actually
+produces. They swap PhpStorm for a stub that prints its arguments, so running
+them never pulls the real (unfree, ~1.5 GB) IDE. CI runs the same two commands
+on every push and pull request.
+
+---
+
 # `phpstorm-url-handler`
 
 ## Why

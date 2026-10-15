@@ -1,10 +1,23 @@
 {
   description = "PhpStorm/Nix glue: shim binaries (php, composer, …) that delegate to `direnv exec` in the current project, plus a handler for phpstorm:// links.";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+
+    # Test-only: the checks assert what the home-manager module produces, not
+    # merely that it evaluates. Nothing this flake exports depends on it.
+    home-manager = {
+      url = "github:nix-community/home-manager";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
 
   outputs =
-    { self, nixpkgs }:
+    {
+      self,
+      nixpkgs,
+      home-manager,
+    }:
     let
       # x86_64-darwin is gone: nixpkgs unstable refuses to evaluate for it
       # since 26.11.
@@ -47,6 +60,17 @@
         default = self.homeModules.phpstorm-url-handler;
         phpstorm-url-handler = ./modules/home-manager/phpstorm-url-handler.nix;
       };
+
+      checks = forAllSystems (
+        pkgs:
+        {
+          shim-fallback = pkgs.callPackage ./checks/shim-fallback.nix { };
+        }
+        // nixpkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          handler-parsing = pkgs.callPackage ./checks/handler-parsing.nix { };
+          hm-module = pkgs.callPackage ./checks/hm-module.nix { inherit home-manager; };
+        }
+      );
 
       formatter = forAllSystems (pkgs: pkgs.nixfmt-tree);
     };

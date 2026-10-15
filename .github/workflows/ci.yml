@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A second push to the same branch makes the previous run pointless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # Only x86_64-linux: `nix flake check` builds for the host system, and the
+    # Darwin outputs are the shims alone, which carry no platform-specific
+    # logic. macOS runners cost ten times the minutes for that.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      # Evaluates every output and runs the checks. The checks stub PhpStorm
+      # out, so this never downloads the real (unfree, ~1.5 GB) IDE.
+      - name: nix flake check
+        run: nix flake check -L
+
+      - name: nix fmt leaves no diff
+        run: |
+          nix fmt
+          git diff --exit-code
